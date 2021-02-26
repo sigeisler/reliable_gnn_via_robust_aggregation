@@ -14,7 +14,7 @@ from torch_sparse import coalesce
 
 from rgnn.means import ROBUST_MEANS
 from rgnn import r_gcn
-from rgnn.utils import get_ppr_matrix, get_truncated_svd, get_jaccard
+from rgnn.utils import get_ppr_matrix, get_h_hop_ppr, get_truncated_svd, get_jaccard
 
 
 class ChainableGCNConv(GCNConv):
@@ -97,6 +97,7 @@ class GCN(nn.Module):
                  dropout: int = 0.5,
                  do_omit_softmax: bool = False,
                  gdc_params: Optional[Dict[str, float]] = None,
+                 hhopppr_params: Optional[Dict[str, float]] = None,
                  svd_params: Optional[Dict[str, float]] = None,
                  jaccard_params: Optional[Dict[str, float]] = None,
                  do_cache_adj_prep: bool = False,
@@ -109,6 +110,7 @@ class GCN(nn.Module):
         self._dropout = dropout
         self._do_omit_softmax = do_omit_softmax
         self._gdc_params = gdc_params
+        self._hhopppr_params = hhopppr_params
         self._svd_params = svd_params
         self._jaccard_params = jaccard_params
         self._do_cache_adj_prep = do_cache_adj_prep
@@ -194,6 +196,10 @@ class GCN(nn.Module):
             )
             edge_idx, edge_weight = adj.indices(), adj.values()
             del adj
+        elif self._hhopppr_params is not None:
+            if edge_weight is None:
+                edge_weight = torch.ones_like(edge_idx[0], dtype=torch.float32)
+            edge_idx, edge_weight = get_h_hop_ppr(edge_idx, edge_weight, x.shape[0], **self._hhopppr_params)
         elif self._svd_params is not None:
             adj = get_truncated_svd(
                 torch.sparse.FloatTensor(
@@ -310,6 +316,72 @@ class RGNN(GCN):
             nn.Sequential(OrderedDict([
                 ('gcn_1', RGNNConv(mean=self._mean, mean_kwargs=self._mean_kwargs,
                                    in_channels=self.n_filters, out_channels=self.n_classes)),
+                ('softmax_1', nn.LogSoftmax(dim=1) if not self._do_omit_softmax else nn.Identity())
+            ]))
+        ])
+
+
+class FeatureLinear(nn.Linear):
+    def forward(self, input: torch.Tensor, *args) -> torch.Tensor:
+        return super().forward(input)
+
+
+class SingleLayerGCN(GCN):
+    """Single Layer (Message-passing) GCN architecture with the adjacency preprocessings:
+    - SVD: Negin Entezari, Saba A. Al-Sayouri, Amirali Darvishzadeh, and Evangelos E. Papalexakis. All you need is Low
+    (rank):  Defending against adversarial attacks on graphs.
+    - GDC: Johannes Klicpera, Stefan Weißenberger, and Stephan Günnemann. Diffusion Improves Graph Learning.
+    - Jaccard: Huijun Wu, Chen Wang, Yuriy Tyshetskiy, Andrew Docherty, Kai Lu, and Liming Zhu.  Adversarial examples
+    for graph data: Deep insights into attack and defense.
+    """
+
+    def _build_layers(self):
+        return nn.ModuleList([
+            nn.Sequential(OrderedDict([
+                ('linear_0', FeatureLinear(self.n_features, self.n_filters)),
+                ('activation_0', self._activation),
+                ('dropout_0', nn.Dropout(p=self._dropout))
+            ])),
+            nn.Sequential(OrderedDict([
+                ('gcn_1', ChainableGCNConv(in_channels=self.n_filters, out_channels=self.n_filters)),
+                ('activation_1', self._activation),
+                ('dropout_1', nn.Dropout(p=self._dropout)),
+                ('linear_1', nn.Linear(self.n_filters, self.n_classes)),
+                ('softmax_1', nn.LogSoftmax(dim=1) if not self._do_omit_softmax else nn.Identity())
+            ]))
+        ])
+
+
+class SingleLayerRGNN(GCN):
+    """Single Layer (Message-passing) Reliable Graph Neural Network (RGNN) implementation which currently supports a
+    GCN architecture with the aggregation functions:
+    - soft_k_medoid
+    - soft_medoid (not scalable)
+    - k_medoid
+    - medoid (not scalable)
+    - dimmedian
+
+    and with the adjacency preprocessings:
+    - SVD: Negin Entezari, Saba A. Al-Sayouri, Amirali Darvishzadeh, and Evangelos E. Papalexakis. All you need is Low
+    (rank):  Defending against adversarial attacks on graphs.
+    - GDC: Johannes Klicpera, Stefan Weißenberger, and Stephan Günnemann. Diffusion Improves Graph Learning.
+    - Jaccard: Huijun Wu, Chen Wang, Yuriy Tyshetskiy, Andrew Docherty, Kai Lu, and Liming Zhu.  Adversarial examples
+    for graph data: Deep insights into attack and defense.
+    """
+
+    def _build_layers(self):
+        return nn.ModuleList([
+            nn.Sequential(OrderedDict([
+                ('linear_0', FeatureLinear(self.n_features, self.n_filters)),
+                ('activation_0', self._activation),
+                ('dropout_0', nn.Dropout(p=self._dropout))
+            ])),
+            nn.Sequential(OrderedDict([
+                ('gcn_1', RGNNConv(mean=self._mean, mean_kwargs=self._mean_kwargs,
+                                   in_channels=self.n_filters, out_channels=self.n_filters)),
+                ('activation_1', self._activation),
+                ('dropout_1', nn.Dropout(p=self._dropout)),
+                ('linear_1', nn.Linear(self.n_filters, self.n_classes)),
                 ('softmax_1', nn.LogSoftmax(dim=1) if not self._do_omit_softmax else nn.Identity())
             ]))
         ])

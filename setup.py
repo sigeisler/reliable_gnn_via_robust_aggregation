@@ -45,5 +45,6 @@ setup(
     packages=['rgnn'],
     install_requires=install_requires,
     zip_safe=False,
-    package_data={'rgnn': ['kernels/csrc/custom.cpp', 'kernels/csrc/custom_kernel.cu']}
+    package_data={'rgnn': ['kernels/csrc/custom.cpp', 'kernels/csrc/custom_kernel.cu']},
+    include_package_data=True
 )

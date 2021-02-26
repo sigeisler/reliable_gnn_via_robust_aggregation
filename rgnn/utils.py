@@ -3,7 +3,9 @@
 import numpy as np
 import scipy.sparse as sp
 import torch
-from torch_geometric.utils import from_scipy_sparse_matrix
+from torch_geometric.utils import from_scipy_sparse_matrix, add_remaining_self_loops
+import torch_scatter
+import torch_sparse
 
 
 def get_ppr_matrix(adjacency_matrix: torch.Tensor,
@@ -70,6 +72,52 @@ def get_ppr_matrix(adjacency_matrix: torch.Tensor,
         torch.stack((row_idx.flatten(), selected_idx.flatten())),
         selected_vals.flatten()
     ).coalesce()
+
+
+def get_h_hop_ppr(indices, values, num_nodes: int, h: int = 2, k: int = None, alpha: float = 0.15, **kwargs):
+    indices, values = torch_sparse.coalesce(
+        *add_remaining_self_loops(indices, values, num_nodes=num_nodes), m=num_nodes, n=num_nodes
+    )
+
+    node_degrees = torch_scatter.scatter_add(values, indices[0])
+
+    t_values = values / node_degrees[indices[0]]
+
+    i_rowcol = torch.arange(num_nodes, device=indices.device)
+    i_indices = torch.stack((i_rowcol, i_rowcol))
+    i_values = torch.ones(num_nodes, device=indices.device)
+
+    x_values = i_values
+    x_indices = i_indices
+
+    for _ in range(h):
+        x_indices, x_values = torch_sparse.spspmm(
+            indexA=x_indices, valueA=x_values,
+            indexB=indices, valueB=(1 - alpha) * t_values,
+            m=num_nodes, k=num_nodes, n=num_nodes
+        )
+        x_indices, x_values = torch_sparse.coalesce(
+            index=torch.cat((x_indices, i_indices), dim=1),
+            value=torch.cat((x_values, alpha * i_values)),
+            m=num_nodes, n=num_nodes
+        )
+
+    if k:
+        from rgnn import means
+
+        sp_t = means._sparse_top_k(
+            torch.sparse.FloatTensor(x_indices, x_values, (num_nodes, num_nodes)),
+            k, return_sparse=True
+        ).coalesce()
+        x_indices, x_values = sp_t.indices(), sp_t.values()
+
+    node_degrees_sqrt = torch.clamp(node_degrees, min=1e-12).sqrt()
+    node_degrees_inv_sqrt = 1. / node_degrees_sqrt
+    x_values = node_degrees_sqrt[x_indices[0]] * x_values * node_degrees_inv_sqrt[x_indices[1]]
+    norm = torch_scatter.scatter_add(x_values, x_indices[0])
+    x_values = x_values / norm[x_indices[0]]
+
+    return x_indices, x_values
 
 
 def get_truncated_svd(adjacency_matrix: torch.Tensor, rank: int = 50):

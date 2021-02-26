@@ -47,8 +47,6 @@ class Storage():
 
         os.makedirs(cache_dir, exist_ok=True)
 
-        self.dbs: Dict[str, TinyDB] = {}
-
     @staticmethod
     def locked_call(callable: Callable[[], Any], lock_file: str, lock_timeout: int) -> Any:
         """Locks a callable execution with a given timout and a specified lock file.
