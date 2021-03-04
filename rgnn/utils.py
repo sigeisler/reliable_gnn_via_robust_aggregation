@@ -142,7 +142,7 @@ def get_truncated_svd(adjacency_matrix: torch.Tensor, rank: int = 50):
     values = adjacency_matrix._values().cpu()
     N = adjacency_matrix.shape[0]
 
-    low_rank_adj = sp.coo_matrix((values, (row, col)), (N, N))
+    low_rank_adj = sp.coo_matrix((values.numpy(), (row.numpy(), col.numpy())), (N, N))
     low_rank_adj = truncatedSVD(low_rank_adj, rank)
     low_rank_adj = torch.from_numpy(low_rank_adj).to(adjacency_matrix.device, adjacency_matrix.dtype)
 
