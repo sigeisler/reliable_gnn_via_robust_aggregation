@@ -174,7 +174,7 @@ def get_jaccard(adjacency_matrix: torch.Tensor, features: torch.Tensor, threshol
     if features.is_sparse:
         features = features.to_dense()
 
-    modified_adj = sp.coo_matrix((values, (row, col)), (N, N))
+    modified_adj = sp.coo_matrix((values.numpy(), (row.numpy(), col.numpy())), (N, N))
     modified_adj = drop_dissimilar_edges(features.cpu().numpy(), modified_adj, threshold=threshold)
     modified_adj = torch.sparse.FloatTensor(*from_scipy_sparse_matrix(modified_adj)).to(adjacency_matrix.device)
     return modified_adj
