@@ -166,7 +166,9 @@ def run(dataset: str, sample_params: Dict[str, Any], n_samples_pre_eval: int, co
         accum_certs = cert_ratio.sum() - cert_ratio[0][0]
         results.append(dict(
             label=hyperparams['label'],
-            accum_certs=accum_certs
+            accum_certs=accum_certs,
+            hyperparams=hyperparams,
+            id=id
         ))
 
     return {

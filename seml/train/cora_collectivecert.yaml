@@ -1,0 +1,74 @@
+seml:
+  name: iclr21_collectivecertificate_train
+  db_collection: iclr21_collectivecertificate_train
+  executable: experiment_train.py
+  conda_environment: rgnn_at_scale
+  project_root_dir: ../..
+  output_dir: seml/train/output
+
+slurm:
+  experiments_per_job: 1
+  sbatch_options:
+    gres: gpu:1       # num GPUs
+    mem: 16G          # memory
+    cpus-per-task: 4  # num cores
+    time: 0-01:00     # max time, D-HH:MM
+
+fixed:
+  train_params:
+    lr: 1e-2
+    weight_decay: 1e-3
+    patience: 300
+    max_epochs: 3000
+  artifact_dir: cache
+  model_storage_type: collective
+  device: 0
+  binary_attr: True
+
+grid:
+  dataset:
+    type: choice
+    options:
+      - cora_ml_collective
+      # - cora_ml
+      # - citeseer
+
+  binary_attr:
+    type: choice
+    options:
+      - False
+
+  seed:
+    type: choice
+    options:
+      - 0
+      - 1
+      - 2
+      - 3
+      - 4
+
+soft_medoid_gdc_weightcorr:
+  fixed:
+    model_params:
+      label: Soft Medoid GDC (final)
+      model: SingleLayerRGNN
+      do_cache_adj_prep: True
+      n_filters: 64
+      dropout: 0.5
+      mean: soft_k_medoid
+      svd_params: None
+      jaccard_params: None
+      hhopppr_params:
+          alpha: 0.15
+          k: 64
+          h: 2
+  grid:
+     model_params:
+      type: parameter_collection
+      params:
+        mean_kwargs:
+          type: choice
+          options:
+            - k: 64
+              temperature: 10
+              with_weight_correction: False
