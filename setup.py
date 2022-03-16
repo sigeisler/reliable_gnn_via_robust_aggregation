@@ -20,6 +20,7 @@ system(f'pip install --no-index torch-scatter -f https://pytorch-geometric.com/w
 system(f'pip install --no-index torch-sparse -f https://pytorch-geometric.com/whl/torch-{torch_v}+{cuda_v}.html')
 system(f'pip install --no-index torch-cluster -f https://pytorch-geometric.com/whl/torch-{torch_v}+{cuda_v}.html')
 system(f'pip install --no-index torch-spline-conv -f https://pytorch-geometric.com/whl/torch-{torch_v}+{cuda_v}.html')
+system(f'pip install torch-geometric=={".".join(torch.__version__.split(".")[:-1])}.*')
 
 install_requires = [
     'filelock',
@@ -34,7 +35,7 @@ install_requires = [
     'tinydb',
     'tinydb-serialization',
     'tqdm',
-    'torch-geometric'
+    # 'torch-geometric'
 ]
 
 setup(

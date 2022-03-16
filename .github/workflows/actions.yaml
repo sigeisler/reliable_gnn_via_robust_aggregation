@@ -7,7 +7,7 @@ jobs:
   build:
     strategy:
       matrix:
-        python-version: [3.6, 3.7, 3.8]
+        python-version: ["3.6", "3.7", "3.8"]
         pytorch-version: [1.4.0, 1.5.0, 1.6.0]
         cuda-version: [10.1]
         include:
@@ -15,33 +15,33 @@ jobs:
             pytorch-version: 1.6.0
             mode: strict
     runs-on: ubuntu-latest
-    container: nvidia/cuda:${{matrix.cuda-version}}-cudnn7-devel-ubuntu18.04
+    # container: nvidia/cuda:${{matrix.cuda-version}}-cudnn7-devel-ubuntu18.04
     env:
-      OS: ${{ matrix.platform }}
       PYTHON: ${{ matrix.python-version }}
 
     steps:
-    - name: Setup basic environment
-      run: |
-        export DEBIAN_FRONTEND=noninteractive
-        apt-get update
-        apt-get install -y libcurl4-gnutls-dev libexpat1-dev gettext libz-dev libssl-dev
-        apt-get install -y curl wget
-        cd ~
-        wget https://github.com/git/git/archive/v2.29.2.tar.gz
-        tar -zxf v2.29.2.tar.gz
-        cd git-2.29.2/
-        make prefix=/usr/local all
-        make prefix=/usr/local install
+    # - name: Setup basic environment
+    #   run: |
+    #     export DEBIAN_FRONTEND=noninteractive
+    #     apt-get update
+    #     apt-get install -y libcurl4-gnutls-dev libexpat1-dev gettext libz-dev libssl-dev
+    #     apt-get install -y curl wget
+    #     cd ~
+    #     wget https://github.com/git/git/archive/v2.29.2.tar.gz
+    #     tar -zxf v2.29.2.tar.gz
+    #     cd git-2.29.2/
+    #     make prefix=/usr/local all
+    #     make prefix=/usr/local install
     - uses: actions/checkout@v2
       with:
         submodules: True
-    - name: Set up Miniconda ${{ matrix.python-version }}
+    - uses: conda-incubator/setup-miniconda@v2
+      with:
+        python-version: ${{ matrix.python-version }}
+    - name: List packages
+      shell: bash -l {0}
       run: |
-        curl -o ~/miniconda.sh https://repo.anaconda.com/miniconda/Miniconda3-latest-Linux-x86_64.sh
-        chmod +x ~/miniconda.sh
-        ~/miniconda.sh -b -p /opt/conda
-        echo "PATH=/opt/conda/bin:$PATH" >> $GITHUB_ENV
+        conda list
     # - name: Install CUDA driver
     #   run: |
     #     export DEBIAN_FRONTEND=noninteractive
@@ -49,15 +49,18 @@ jobs:
     #     add-apt-repository -y ppa:graphics-drivers/ppa
     #     sudo apt install --no-install-recommends nvidia-450 nvidia-450-dev libcuda1-450
     - name: Install Python and PyTorch
+      shell: bash -l {0}
       run: |
-        conda install python=${{ matrix.python-version }}
         conda install pytorch==${{matrix.pytorch-version}} torchvision torchaudio cudatoolkit=${{matrix.cuda-version}} -c pytorch
     - name: Requirements (strict)
+      shell: bash -l {0}
       if: matrix.mode == 'strict'
       run: |
         pip install -r requirements.txt
     - name: Install local modules
+      shell: bash -l {0}
       run: |
+        pip install --force-reinstall --no-cache-dir pillow>=6.2.0
         pip install .
         # pip install ./kernels
         conda install gmpy2 statsmodels
@@ -65,15 +68,18 @@ jobs:
     # - name: Check availability of prebuilt kernels
     #   run: python -c "import torch, kernels; kernels.topk; kernels.dimmedian_idx"
     - name: Lint with flake8
+      shell: bash -l {0}
       run: |
         # stop the build if there are linting errors according to `.flake8`
         pip install -r requirements-dev.txt
         flake8 . --count --show-source --statistics
     - name: Test with pytest
+      shell: bash -l {0}
       run: |
         # Ignore test_being_robust_compare_with_matlab.py due to `np.load` problems
         pytest tests
     - name: Execute experiments to check that they are successful
+      shell: bash -l {0}
       run: |
         # Ignore test_being_robust_compare_with_matlab.py due to `np.load` problems
         python experiment_train.py with "dataset=cora_ml" "seed=0" "model_params={\"label\": \"Soft Medoid GDC (T=1.0)\", \"model\": \"RGNN\", \"do_cache_adj_prep\": True, \"n_filters\": 64, \"dropout\": 0.5, \"mean\": \"soft_k_medoid\", \"mean_kwargs\": {\"k\": 64, \"temperature\": 1.0}, \"svd_params\": None, \"jaccard_params\": None, \"gdc_params\": {\"alpha\": 0.15, \"k\": 64}}" "binary_attr=False" "train_params={\"lr\": 1e-2, \"weight_decay\": 5e-4, \"patience\": 5, \"lr\": 5}" "device=cpu"
